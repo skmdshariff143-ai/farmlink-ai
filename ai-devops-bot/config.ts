@@ -2,6 +2,7 @@ export const BOT_CONFIG = {
   GITHUB_TOKEN: process.env.GITHUB_TOKEN || "",
   GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",
   MAX_RETRIES: 3,
+  SAFE_MODE: true, // If true, opens PRs instead of writing directly to main
   PROTECTED_PATHS: [
     "src/app/api/payments",
     "src/lib/auth.ts",

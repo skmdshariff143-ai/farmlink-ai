@@ -23,12 +23,12 @@ export async function runSelfHealingPipeline(repo: string, runId: string): Promi
   }
 
   // 3. Auto-fix and commit patch
-  const fixed = await BotFixer.applyFix(diagnostics);
+  const fixed = await BotFixer.applyFix(repo, diagnostics);
   if (fixed) {
-    botLogger.info("Auto-patch pushed successfully. Restarting CI pipeline...");
+    botLogger.info("Auto-patch pushed and PR opened. Triggering action rerun...");
     // 4. Trigger GitHub Action rerun
     await GitHubService.triggerRerun(repo, runId);
   } else {
-    botLogger.warn("Healer aborted: Code fix could not be safely applied.");
+    botLogger.warn("Healer aborted: Safe PR flow could not be completed.");
   }
 }
