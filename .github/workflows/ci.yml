@@ -1,0 +1,39 @@
+name: FarmLink AI CI/CD Build pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code Repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js Runtime Environment
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: 'npm'
+
+    - name: Install Project Dependencies
+      run: npm ci
+
+    - name: Compile Prisma Client Typings
+      run: npx prisma generate
+
+    - name: Run Eslint Verification
+      run: npm run lint
+
+    - name: Verify TypeScript & Build Next.js Production Bundle
+      run: npm run build
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+        NEXT_PUBLIC_APP_URL: "https://farmlink-umber.vercel.app"
+        NEXT_PUBLIC_SOCKET_URL: "http://localhost:3001"
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
