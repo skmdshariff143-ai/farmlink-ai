@@ -23,18 +23,17 @@ export default function Navbar() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    if (typeof window !== "undefined") {
+      return document.documentElement.classList.contains("dark");
+    }
+    return false;
+  });
   const [lang, setLang] = useState("EN");
 
   // Read status for notifications
   const unreadNotifCount = notifications.filter(n => !n.read).length;
   const activeChatRoomsCount = chatRooms.length;
-
-  useEffect(() => {
-    // Initialise dark mode state based on html class
-    const isDark = document.documentElement.classList.contains("dark");
-    setDarkMode(isDark);
-  }, []);
 
   const toggleDarkMode = () => {
     if (darkMode) {

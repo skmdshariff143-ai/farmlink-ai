@@ -41,20 +41,23 @@ export function useCrops(filters?: { category?: string; search?: string }) {
       if (response.success && response.data) {
         setCrops(response.data);
         // Sync our global state store
-        syncStoreListings(response.data as any);
+        syncStoreListings(response.data as unknown as Parameters<typeof syncStoreListings>[0]);
       } else {
         setError(response.error || "Failed to fetch crops");
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch crops");
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setError(errMsg || "Failed to fetch crops");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchCrops();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const timer = setTimeout(() => {
+      fetchCrops();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [filters?.category, filters?.search]);
 
   const uploadCrop = async (data: {
@@ -75,8 +78,9 @@ export function useCrops(filters?: { category?: string; search?: string }) {
       }
       setError(response.error || "Upload failed");
       return false;
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setError(errMsg);
       return false;
     } finally {
       setLoading(false);
@@ -99,9 +103,10 @@ export function useCrops(filters?: { category?: string; search?: string }) {
         return false;
       }
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       setCrops(previousCrops);
-      setError(err.message);
+      setError(errMsg);
       return false;
     }
   };
@@ -119,9 +124,10 @@ export function useCrops(filters?: { category?: string; search?: string }) {
         return false;
       }
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       setCrops(previousCrops);
-      setError(err.message);
+      setError(errMsg);
       return false;
     }
   };

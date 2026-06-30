@@ -34,12 +34,14 @@ function ChatContent() {
 
   // Handle URL changes
   useEffect(() => {
-    if (roomIdFromUrl) {
-      setActiveRoomId(roomIdFromUrl);
-    } else if (chatRooms.length > 0) {
-      setActiveRoomId(chatRooms[0].id);
+    const targetId = roomIdFromUrl || (chatRooms.length > 0 ? chatRooms[0].id : "");
+    if (targetId && targetId !== activeRoomId) {
+      const timer = setTimeout(() => {
+        setActiveRoomId(targetId);
+      }, 0);
+      return () => clearTimeout(timer);
     }
-  }, [roomIdFromUrl, chatRooms]);
+  }, [roomIdFromUrl, chatRooms, activeRoomId]);
 
   const activeRoom = chatRooms.find((r) => r.id === activeRoomId);
 

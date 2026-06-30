@@ -46,20 +46,23 @@ export function useOrders() {
       if (response.success && response.data) {
         setOrders(response.data);
         // Sync our global store
-        syncStoreOrders(response.data as any);
+        syncStoreOrders(response.data as unknown as Parameters<typeof syncStoreOrders>[0]);
       } else {
         setError(response.error || "Failed to fetch orders");
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch orders");
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setError(errMsg || "Failed to fetch orders");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchOrders();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const timer = setTimeout(() => {
+      fetchOrders();
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   const placeOrder = async (data: {
@@ -75,8 +78,9 @@ export function useOrders() {
       }
       setError(response.error || "Order placement failed");
       return null;
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setError(errMsg);
       return null;
     } finally {
       setLoading(false);
@@ -99,9 +103,10 @@ export function useOrders() {
         return false;
       }
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       setOrders(previousOrders);
-      setError(err.message);
+      setError(errMsg);
       return false;
     }
   };

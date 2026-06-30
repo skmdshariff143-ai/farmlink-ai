@@ -8,23 +8,18 @@ import confetti from "canvas-confetti";
 export default function DemoPage() {
   const [demandIndex, setDemandIndex] = useState(82);
   const [marketState, setMarketState] = useState<"Bullish" | "Bearish" | "Stable">("Bullish");
-  const [forecastPrice, setForecastPrice] = useState(75);
   const [liveTicks, setLiveTicks] = useState<string[]>([
     "Buyer AgroCorp placed bid ₹68/kg for Basmati Rice",
     "Farmer Ram Singh listed 500kg Turmeric Bulbs",
     "Logistics Kuldeep completed delivery ts_902"
   ]);
 
-  // Handle price predictions simulator updates based on demand and market indicators
-  useEffect(() => {
-    let multiplier = 1;
-    if (marketState === "Bullish") multiplier = 1.15;
-    if (marketState === "Bearish") multiplier = 0.85;
+  let multiplier = 1;
+  if (marketState === "Bullish") multiplier = 1.15;
+  if (marketState === "Bearish") multiplier = 0.85;
 
-    const basePrice = 65; // Rice base
-    const calculated = Math.round(basePrice * (demandIndex / 80) * multiplier);
-    setForecastPrice(calculated);
-  }, [demandIndex, marketState]);
+  const basePrice = 65; // Rice base
+  const forecastPrice = Math.round(basePrice * (demandIndex / 80) * multiplier);
 
   // Animate live activity ticks
   useEffect(() => {

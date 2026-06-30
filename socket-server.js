@@ -1,11 +1,5 @@
-// =================================================================================
-// FARMLINK AI - SCALABLE WEBSOCKET SERVER MICROSERVICE
-// =================================================================================
-// This standalone server manages real-time chat, bid ticks, and dispatch tracking.
-// Supports Redis adapters for horizontal clustering across multi-core container nodes.
-
-const http = require("http");
-const { Server } = require("socket.io");
+import http from "http";
+import { Server } from "socket.io";
 
 const PORT = process.env.SOCKET_PORT || 3001;
 
@@ -26,8 +20,8 @@ const io = new Server(server, {
 // Optional Redis clustering adapter integration (if REDIS_URL exists)
 if (process.env.REDIS_URL) {
   try {
-    const { createClient } = require("redis");
-    const { createAdapter } = require("@socket.io/redis-adapter");
+    const { createClient } = await import("redis");
+    const { createAdapter } = await import("@socket.io/redis-adapter");
     
     const pubClient = createClient({ url: process.env.REDIS_URL });
     const subClient = pubClient.duplicate();

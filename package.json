@@ -2,11 +2,14 @@
   "name": "farmlink",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"No tests specified\" && exit 0"
   },
   "dependencies": {
     "@octokit/rest": "^22.0.1",

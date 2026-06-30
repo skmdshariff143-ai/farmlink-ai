@@ -38,5 +38,11 @@ jobs:
     - name: Run Eslint Verification
       run: npm run lint
 
+    - name: Run TypeScript Type Check
+      run: npm run typecheck
+
     - name: Verify TypeScript & Build Next.js Production Bundle
       run: npm run build
+
+    - name: Run Tests
+      run: npm test
