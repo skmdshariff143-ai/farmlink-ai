@@ -1,5 +1,4 @@
-import fs from "react-native"; // Wait, make sure we use standard node imports
-import fsNode from "fs";
+import fs from "fs";
 import { execSync } from "child_process";
 import { BOT_CONFIG } from "./config";
 import { botLogger } from "./logger";
@@ -32,10 +31,10 @@ export const BotFixer = {
       if (riskLevel === "low") {
         if (errorType === "NEXTJS_ROUTE" && file) {
           botLogger.info("Applying Named Export patch to API route...", { file });
-          let code = fsNode.readFileSync(file, "utf-8");
+          let code = fs.readFileSync(file, "utf-8");
           code = code.replace(/export\s+default\s+async\s+function\s+GET/g, "export async function GET");
           code = code.replace(/export\s+default\s+function\s+GET/g, "export async function GET");
-          fsNode.writeFileSync(file, code);
+          fs.writeFileSync(file, code);
         } else if (errorType === "PRISMA") {
           botLogger.info("Applying Prisma Client Generation fallback...");
           execSync("npx.cmd prisma generate");
