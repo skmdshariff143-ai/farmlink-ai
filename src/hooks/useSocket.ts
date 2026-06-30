@@ -14,6 +14,7 @@ export function useSocket(roomId?: string, userContext?: { id: string; name: str
   const [messages, setMessages] = useState<any[]>([]);
   const [bidTick, setBidTick] = useState<any>(null);
   const [deliveryProgress, setDeliveryProgress] = useState<any>(null);
+  const [notifications, setNotifications] = useState<any[]>([]);
 
   useEffect(() => {
     // 1. Initialize client-side socket connection
@@ -62,6 +63,10 @@ export function useSocket(roomId?: string, userContext?: { id: string; name: str
 
     socket.on("order:progress", (progress: any) => {
       setDeliveryProgress(progress);
+    });
+
+    socket.on("notification:receive", (notif: any) => {
+      setNotifications((prev) => [notif, ...prev]);
     });
 
     socket.on("typing:status", ({ userName, isTyping }: any) => {
@@ -113,6 +118,15 @@ export function useSocket(roomId?: string, userContext?: { id: string; name: str
     });
   };
 
+  const emitNotification = (targetUserId: string, message: string, type?: string) => {
+    if (!socketRef.current) return;
+    socketRef.current.emit("notification:push", {
+      userId: targetUserId,
+      message,
+      type
+    });
+  };
+
   const startTyping = () => {
     if (!socketRef.current || !roomId || !userContext) return;
     socketRef.current.emit("typing:start", { roomId, userName: userContext.name });
@@ -130,9 +144,11 @@ export function useSocket(roomId?: string, userContext?: { id: string; name: str
     messages,
     bidTick,
     deliveryProgress,
+    notifications,
     sendChatMessage,
     emitBid,
     emitOrderUpdate,
+    emitNotification,
     startTyping,
     stopTyping
   };

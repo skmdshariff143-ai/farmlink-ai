@@ -110,6 +110,28 @@ io.on("connection", (socket) => {
     });
   });
 
+  // Event 4: Live push notifications (Targeted or Global)
+  socket.on("notification:push", (payload) => {
+    const { userId, message, type } = payload;
+    const notification = {
+      id: `notif_${Date.now()}`,
+      message,
+      type: type || "info",
+      timestamp: new Date().toLocaleTimeString()
+    };
+
+    if (userId) {
+      // Target specific user connection socket
+      const active = activeUsers.get(userId);
+      if (active) {
+        io.to(active.socketId).emit("notification:receive", notification);
+      }
+    } else {
+      // Broadcast globally
+      io.emit("notification:receive", notification);
+    }
+  });
+
   // Event 4: Typing indicators
   socket.on("typing:start", ({ roomId, userName }) => {
     socket.to(roomId).emit("typing:status", { roomId, userName, isTyping: true });
