@@ -9,6 +9,12 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/postgres' }}
+      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET || 'mock-nextauth-secret-key-hash-string-value-for-ci' }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || 'mock-gemini-api-key-value-for-ci' }}
+      NEXT_PUBLIC_APP_URL: "https://farmlink-umber.vercel.app"
+      NEXT_PUBLIC_SOCKET_URL: "http://localhost:3001"
 
     steps:
     - name: Checkout Code Repository
@@ -31,9 +37,3 @@ jobs:
 
     - name: Verify TypeScript & Build Next.js Production Bundle
       run: npm run build
-      env:
-        DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
-        NEXT_PUBLIC_APP_URL: "https://farmlink-umber.vercel.app"
-        NEXT_PUBLIC_SOCKET_URL: "http://localhost:3001"
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
