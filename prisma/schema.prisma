@@ -98,6 +98,7 @@ model Order {
   
   // Relations
   items         OrderItem[]
+  payments      Payment[]
 }
 
 model OrderItem {
@@ -153,4 +154,15 @@ model GovernmentScheme {
   description String
   subsidy     String
   eligibility String
+}
+
+model Payment {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount    Float
+  status    String   @default("Pending") // Pending, Paid, Failed
+  method    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
