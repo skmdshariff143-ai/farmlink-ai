@@ -138,6 +138,7 @@ interface FarmState {
   listings: CropListing[];
   addListing: (listing: Omit<CropListing, "id" | "createdAt" | "status">) => void;
   updateListingStock: (id: string, newQty: number) => void;
+  syncListings: (listings: CropListing[]) => void;
 
   // Cart
   cart: OrderItem[];
@@ -150,6 +151,7 @@ interface FarmState {
   orders: Order[];
   createOrder: (paymentMethod: string) => void;
   updateOrderStatus: (id: string, status: Order["status"], step: number) => void;
+  syncOrders: (orders: Order[]) => void;
 
   // Bookings
   transportBookings: TransportBooking[];
@@ -488,6 +490,7 @@ export const useFarmStore = create<FarmState>()(
               : l
           ),
         })),
+      syncListings: (listings) => set({ listings }),
 
       // Cart
       cart: [],
@@ -582,6 +585,7 @@ export const useFarmStore = create<FarmState>()(
             o.id === id ? { ...o, status, trackingStep: step } : o
           ),
         })),
+      syncOrders: (orders) => set({ orders }),
 
       // Bookings
       transportBookings: [
