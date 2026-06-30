@@ -1,11 +1,13 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
+import bcrypt from "bcryptjs";
 
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       name: "Phone Passcode",
+      id: "phone-passcode",
       credentials: {
         phone: { label: "Phone Number", type: "text", placeholder: "+91 98765 43210" },
         otp: { label: "SMS Passcode", type: "password" }
@@ -46,6 +48,39 @@ export const authOptions: NextAuthOptions = {
           walletBalance: user.walletBalance
         };
       }
+    }),
+    CredentialsProvider({
+      name: "Email Password",
+      id: "email-password",
+      credentials: {
+        email: { label: "Email Address", type: "email", placeholder: "ram@farmlink.ai" },
+        password: { label: "Password", type: "password" }
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) return null;
+
+        const user = await prisma.user.findUnique({
+          where: { email: credentials.email }
+        });
+
+        if (!user || !user.password) {
+          throw new Error("User record not found or password credential not established");
+        }
+
+        const isPasswordValid = await bcrypt.compare(credentials.password, user.password);
+        if (!isPasswordValid) {
+          throw new Error("Invalid email password combination");
+        }
+
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          phone: user.phone,
+          walletBalance: user.walletBalance
+        };
+      }
     })
   ],
   callbacks: {
@@ -74,6 +109,6 @@ export const authOptions: NextAuthOptions = {
   },
   secret: process.env.NEXTAUTH_SECRET,
   pages: {
-    signIn: "/auth"
+    signIn: "/login"
   }
 };
