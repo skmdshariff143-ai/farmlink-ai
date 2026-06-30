@@ -157,5 +157,31 @@ export const AIService = {
     `;
 
     return this.callGemini(prompt, fallback);
+  },
+
+  async getDemandForecast(cropName: string, location: string) {
+    const fallback = {
+      cropName,
+      location,
+      demandIndex: 85,
+      marketTrend: "Upward (Bullish)",
+      recommendedAction: "Hold stock for 10 days; local mandi arrivals are low, leading to expected 8% price increase.",
+      volumeForecast: "High (Estimated 14,000 metric tons demand in region)"
+    };
+
+    const prompt = `
+      Generate a demand forecast for crop "${cropName}" in region "${location}".
+      Format response as JSON matching:
+      {
+        "cropName": "${cropName}",
+        "location": "${location}",
+        "demandIndex": number (0-100),
+        "marketTrend": "Upward (Bullish)" | "Downward (Bearish)" | "Neutral",
+        "recommendedAction": "string",
+        "volumeForecast": "string"
+      }
+    `;
+
+    return this.callGemini(prompt, fallback);
   }
 };
