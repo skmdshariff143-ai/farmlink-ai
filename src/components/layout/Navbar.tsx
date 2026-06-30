@@ -328,7 +328,7 @@ export default function Navbar() {
                           <span className="text-primary font-extrabold">₹{currentUser.walletBalance.toLocaleString("en-IN")}</span>
                         </div>
                         <Link 
-                          href="/auth" 
+                          href="/login" 
                           onClick={() => setShowProfileMenu(false)}
                           className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-red-600 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/20 transition-all"
                         >

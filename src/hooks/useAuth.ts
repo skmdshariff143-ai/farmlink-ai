@@ -87,6 +87,6 @@ export function useAuth() {
     register,
     loginWithPhone,
     updateProfile,
-    logout: () => signOut({ callbackUrl: "/auth" })
+    logout: () => signOut({ callbackUrl: "/login" })
   };
 }

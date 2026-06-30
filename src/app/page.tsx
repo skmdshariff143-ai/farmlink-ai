@@ -148,7 +148,7 @@ export default function Home() {
                   <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link
-                  href="/auth"
+                  href="/register"
                   className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-white dark:bg-card-bg border border-border-nature text-text-charcoal hover:bg-bg-nature text-sm font-extrabold transition-all text-center"
                 >
                   Join as Partner / Farmer
