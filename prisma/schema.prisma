@@ -104,6 +104,8 @@ model Order {
   // Relations
   items         OrderItem[]
   payments      Payment[]
+
+  @@index([buyerId])
 }
 
 model OrderItem {
@@ -115,6 +117,9 @@ model OrderItem {
   name       String
   price      Float
   quantity   Float
+
+  @@index([orderId])
+  @@index([listingId])
 }
 
 model Booking {
@@ -129,6 +134,8 @@ model Booking {
   startDate   String
   duration    Int?          // Months (for warehouse storage)
   createdAt   DateTime      @default(now())
+
+  @@index([userId])
 }
 
 model ChatRoom {
@@ -151,6 +158,9 @@ model ChatMessage {
   timestamp  DateTime @default(now())
   image      String?
   audio      Boolean  @default(false)
+
+  @@index([roomId])
+  @@index([senderId])
 }
 
 model GovernmentScheme {
@@ -170,6 +180,8 @@ model Payment {
   method    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([orderId])
 }
 
 model Transaction {
@@ -181,6 +193,8 @@ model Transaction {
   status      String   // Success, Pending, Failed
   description String
   createdAt   DateTime @default(now())
+
+  @@index([userId])
 }
 
 model FarmerProfile {
@@ -214,4 +228,6 @@ model Notification {
   type      String   // info, success, warning, error
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
+
+  @@index([userId])
 }
