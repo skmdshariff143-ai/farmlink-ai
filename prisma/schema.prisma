@@ -1,0 +1,156 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  FARMER
+  BUYER
+  TRANSPORT
+  WAREHOUSE
+  ADMIN
+}
+
+enum ListingStatus {
+  AVAILABLE
+  SOLD_OUT
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  IN_TRANSIT
+  DELIVERED
+}
+
+enum BookingType {
+  TRANSPORT
+  WAREHOUSE
+  LOAN
+}
+
+enum BookingStatus {
+  ASSIGNED
+  IN_TRANSIT
+  COMPLETED
+  BOOKED
+}
+
+model User {
+  id             String         @id @default(uuid())
+  name           String
+  phone          String         @unique
+  email          String         @unique
+  role           Role           @default(FARMER)
+  avatar         String?
+  location       String
+  walletBalance  Float          @default(0.0)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  
+  // Relations
+  listings       CropListing[]  @relation("FarmerCrops")
+  ordersPlaced   Order[]        @relation("BuyerOrders")
+  bookings       Booking[]
+  sentMessages   ChatMessage[]
+}
+
+model CropListing {
+  id          String        @id @default(uuid())
+  name        String
+  category    String
+  price       Float         // Price per kg
+  quantity    Float         // Stock in kg
+  location    String
+  distance    String?       // Calculated text distance
+  farmerId    String
+  farmer      User          @relation("FarmerCrops", fields: [farmerId], references: [id], onDelete: Cascade)
+  rating      Float         @default(5.0)
+  image       String
+  description String
+  status      ListingStatus @default(AVAILABLE)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  // Relations
+  orderItems  OrderItem[]
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  buyerId       String
+  buyer         User        @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Cascade)
+  total         Float
+  status        OrderStatus @default(PENDING)
+  paymentMethod String
+  paymentStatus String      @default("Pending") // Paid, Pending, Refunded
+  trackingStep  Int         @default(0)         // 0: ordered, 1: packed, 2: transit, 3: completed
+  deliveryDate  String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  // Relations
+  items         OrderItem[]
+}
+
+model OrderItem {
+  id         String      @id @default(uuid())
+  orderId    String
+  order      Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  listingId  String
+  listing    CropListing @relation(fields: [listingId], references: [id])
+  name       String
+  price      Float
+  quantity   Float
+}
+
+model Booking {
+  id          String        @id @default(uuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        BookingType
+  targetName  String        // Driver name or Warehouse name
+  details     String        // Route or storage configurations
+  price       Float
+  status      BookingStatus
+  startDate   String
+  duration    Int?          // Months (for warehouse storage)
+  createdAt   DateTime      @default(now())
+}
+
+model ChatRoom {
+  id               String        @id @default(uuid())
+  participantA     String
+  participantB     String
+  lastMessage      String?
+  lastActive       DateTime      @default(now())
+  messages         ChatMessage[]
+}
+
+model ChatMessage {
+  id         String   @id @default(uuid())
+  roomId     String
+  room       ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  senderId   String
+  sender     User     @relation(fields: [senderId], references: [id])
+  senderName String
+  text       String
+  timestamp  DateTime @default(now())
+  image      String?
+  audio      Boolean  @default(false)
+}
+
+model GovernmentScheme {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  subsidy     String
+  eligibility String
+}

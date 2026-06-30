@@ -1,0 +1,151 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-secondary: var(--secondary);
+  --color-accent: var(--accent);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+  --color-bg-nature: var(--bg-nature);
+  --color-text-charcoal: var(--text-charcoal);
+  --color-card-bg: var(--card-bg);
+  --color-border-nature: var(--border-nature);
+  --radius-custom: 18px;
+  
+  --animate-float: float 4s ease-in-out infinite;
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+  }
+}
+
+:root {
+  --primary: #2E7D32;
+  --primary-hover: #1B5E20;
+  --secondary: #43A047;
+  --accent: #8BC34A;
+  --success: #4CAF50;
+  --warning: #FFC107;
+  --error: #F44336;
+  --bg-nature: #F6FFF7;
+  --text-charcoal: #1B1B1B;
+  --card-bg: #FFFFFF;
+  --border-nature: #E2EFE4;
+}
+
+.dark {
+  --primary: #4CAF50;
+  --primary-hover: #66BB6A;
+  --secondary: #8BC34A;
+  --accent: #C5E1A5;
+  --success: #4CAF50;
+  --warning: #FFC107;
+  --error: #EF5350;
+  --bg-nature: #09120B;
+  --text-charcoal: #F1F8F3;
+  --card-bg: #121F14;
+  --border-nature: #223727;
+}
+
+body {
+  background-color: var(--bg-nature);
+  color: var(--text-charcoal);
+  font-family: var(--font-inter), sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  overflow-x: hidden;
+}
+
+/* Glassmorphism custom classes */
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.dark .glass {
+  background: rgba(18, 31, 20, 0.65);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+/* Hide scrollbar for IE, Edge and Firefox */
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--secondary);
+  border-radius: 8px;
+  opacity: 0.5;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+/* Leaf/organic patterns */
+.organic-bg {
+  background-image: radial-gradient(var(--border-nature) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.gradient-hero {
+  background: radial-gradient(circle at 10% 20%, rgba(139, 195, 74, 0.15) 0%, rgba(46, 125, 50, 0.05) 90.2%);
+}
+
+.dark .gradient-hero {
+  background: radial-gradient(circle at 10% 20%, rgba(76, 175, 80, 0.1) 0%, rgba(9, 18, 11, 0.2) 90.2%);
+}
+
+/* Loading skeletal animate shimmer */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.shimmer::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.3) 20%,
+    rgba(255, 255, 255, 0.5) 60%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: shimmer 2s infinite;
+  content: '';
+}
+.dark .shimmer::after {
+  background-image: linear-gradient(
+    90deg,
+    rgba(18, 31, 20, 0) 0%,
+    rgba(18, 31, 20, 0.2) 20%,
+    rgba(18, 31, 20, 0.4) 60%,
+    rgba(18, 31, 20, 0) 100%
+  );
+}
