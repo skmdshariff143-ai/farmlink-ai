@@ -28,6 +28,15 @@ export async function POST(req: Request) {
     const { orderId, paymentMethod, amount } = result.data;
     const userId = (session.user as any).id;
 
+    const order = await OrderService.getOrderById(orderId);
+    if (!order) {
+      return NextResponse.json({ success: false, error: "Order details not found" }, { status: 404 });
+    }
+
+    if (order.total !== amount) {
+      return NextResponse.json({ success: false, error: "Payment amount does not match order total" }, { status: 400 });
+    }
+
     if (paymentMethod === "Farmlink Wallet") {
       const paymentResult = await PaymentFintechService.executeWalletPayment(userId, orderId, amount);
       return NextResponse.json({ success: true, data: paymentResult });
