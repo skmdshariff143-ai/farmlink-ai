@@ -33,7 +33,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Order details not found" }, { status: 404 });
     }
 
-    if (order.total !== amount) {
+    if (Math.round(order.total * 100) !== Math.round(amount * 100)) {
       return NextResponse.json({ success: false, error: "Payment amount does not match order total" }, { status: 400 });
     }
 
