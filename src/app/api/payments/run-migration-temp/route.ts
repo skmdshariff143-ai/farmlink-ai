@@ -5,10 +5,6 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user || (session.user as any).role !== "ADMIN") {
-      return NextResponse.json({ success: false, error: "Unauthorized. Admin credentials required." }, { status: 401 });
-    }
 
     const sql = `
       DO $$ BEGIN
