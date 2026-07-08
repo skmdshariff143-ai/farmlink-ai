@@ -28,6 +28,7 @@ enum OrderStatus {
   CONFIRMED
   IN_TRANSIT
   DELIVERED
+  CANCELLED
 }
 
 enum BookingType {
