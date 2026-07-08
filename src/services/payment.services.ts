@@ -105,6 +105,9 @@ export const PaymentFintechService = {
       });
 
       if (!order) throw new Error("Order not found");
+      if (order.disputed) {
+        throw new Error("Cannot release escrow for disputed orders");
+      }
       if (order.status !== "DELIVERED") {
         throw new Error("Cannot release escrow for orders that are not delivered");
       }
@@ -116,7 +119,8 @@ export const PaymentFintechService = {
         where: {
           id: orderId,
           escrowReleased: false,
-          paymentStatus: "Paid"
+          paymentStatus: "Paid",
+          disputed: false
         },
         data: {
           escrowReleased: true
@@ -161,6 +165,9 @@ export const PaymentFintechService = {
     return prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({ where: { id: orderId } });
       if (!order) throw new Error("Order not found");
+      if (order.disputed) {
+        throw new Error("Cannot refund disputed orders");
+      }
       if (order.paymentStatus !== "Paid") throw new Error("Only completed payments can be refunded");
       if (order.escrowReleased) throw new Error("Cannot refund orders after farmer payout has been released");
 
@@ -169,7 +176,8 @@ export const PaymentFintechService = {
         where: {
           id: orderId,
           escrowReleased: false,
-          paymentStatus: "Paid"
+          paymentStatus: "Paid",
+          disputed: false
         },
         data: {
           paymentStatus: "Refunded",
@@ -199,6 +207,242 @@ export const PaymentFintechService = {
             description: `Escrow refund credited back for Order: ${orderId}`
           }
         });
+      }
+
+      return { success: true };
+    });
+  },
+
+  async raiseDispute(
+    orderId: string,
+    raisedById: string,
+    raisedByRole: "BUYER" | "FARMER",
+    reason: string,
+    description: string
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({ where: { id: orderId } });
+      if (!order) throw new Error("Order not found");
+      if (order.paymentStatus !== "Paid") {
+        throw new Error("Cannot dispute an order that has not been paid");
+      }
+      if (order.escrowReleased) {
+        throw new Error("Cannot dispute an order after the payout has been released");
+      }
+      if (order.disputed) {
+        throw new Error("Order is already disputed");
+      }
+
+      // Atomically update order to disputed
+      const updateResult = await tx.order.updateMany({
+        where: {
+          id: orderId,
+          disputed: false,
+          escrowReleased: false,
+          paymentStatus: "Paid"
+        },
+        data: {
+          disputed: true
+        }
+      });
+
+      if (updateResult.count === 0) {
+        throw new Error("AlreadyProcessed: Dispute raise could not be completed (state changed under you)");
+      }
+
+      // Create OrderDispute record
+      const dispute = await tx.orderDispute.create({
+        data: {
+          orderId,
+          raisedById,
+          raisedByRole,
+          reason,
+          description,
+          status: "OPEN"
+        }
+      });
+
+      return { success: true, dispute };
+    });
+  },
+
+  async resolveDispute(
+    orderId: string,
+    resolvedById: string,
+    resolution: "RESOLVED_REFUND" | "RESOLVED_RELEASE" | "RESOLVED_SPLIT",
+    notes: string,
+    splitFarmerAmount?: number,
+    splitBuyerAmount?: number
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { items: { include: { listing: true } } }
+      });
+      if (!order) throw new Error("Order not found");
+      if (!order.disputed) throw new Error("Order is not currently disputed");
+
+      const dispute = await tx.orderDispute.findUnique({ where: { orderId } });
+      if (!dispute || dispute.status !== "OPEN") {
+        throw new Error("Dispute is not open or already resolved");
+      }
+
+      if (resolution === "RESOLVED_RELEASE") {
+        const updateResult = await tx.order.updateMany({
+          where: {
+            id: orderId,
+            disputed: true,
+            escrowReleased: false
+          },
+          data: {
+            disputed: false,
+            escrowReleased: true
+          }
+        });
+
+        if (updateResult.count === 0) throw new Error("ConcurrencyError: Dispute resolution failed");
+
+        await tx.orderDispute.update({
+          where: { orderId },
+          data: { status: "RESOLVED_RELEASE", resolvedById, resolutionNotes: notes }
+        });
+
+        for (const item of order.items) {
+          const farmerId = item.listing.farmerId;
+          const payoutAmount = item.price * item.quantity;
+
+          const farmer = await tx.user.findUnique({ where: { id: farmerId } });
+          if (farmer) {
+            await tx.user.update({
+              where: { id: farmerId },
+              data: { walletBalance: farmer.walletBalance + payoutAmount }
+            });
+
+            await tx.transaction.create({
+              data: {
+                userId: farmerId,
+                type: "Payout",
+                amount: payoutAmount,
+                status: "Success",
+                description: `Dispute resolution escrow payout received for Order: ${orderId}`
+              }
+            });
+          }
+        }
+      }
+
+      else if (resolution === "RESOLVED_REFUND") {
+        const updateResult = await tx.order.updateMany({
+          where: {
+            id: orderId,
+            disputed: true,
+            paymentStatus: "Paid"
+          },
+          data: {
+            disputed: false,
+            paymentStatus: "Refunded",
+            status: "CANCELLED"
+          }
+        });
+
+        if (updateResult.count === 0) throw new Error("ConcurrencyError: Dispute resolution failed");
+
+        await tx.orderDispute.update({
+          where: { orderId },
+          data: { status: "RESOLVED_REFUND", resolvedById, resolutionNotes: notes }
+        });
+
+        const buyer = await tx.user.findUnique({ where: { id: order.buyerId } });
+        if (buyer) {
+          await tx.user.update({
+            where: { id: order.buyerId },
+            data: { walletBalance: buyer.walletBalance + order.total }
+          });
+
+          await tx.transaction.create({
+            data: {
+              userId: order.buyerId,
+              type: "Refund",
+              amount: order.total,
+              status: "Success",
+              description: `Dispute resolution escrow refund credited back for Order: ${orderId}`
+            }
+          });
+        }
+      }
+
+      else if (resolution === "RESOLVED_SPLIT") {
+        if (splitFarmerAmount === undefined || splitBuyerAmount === undefined) {
+          throw new Error("Split amounts are required for RESOLVED_SPLIT resolution");
+        }
+        
+        const totalSplit = splitFarmerAmount + splitBuyerAmount;
+        if (Math.round(totalSplit * 100) !== Math.round(order.total * 100)) {
+          throw new Error("Total split amount must match order total");
+        }
+
+        const updateResult = await tx.order.updateMany({
+          where: {
+            id: orderId,
+            disputed: true,
+            escrowReleased: false,
+            paymentStatus: "Paid"
+          },
+          data: {
+            disputed: false,
+            escrowReleased: true,
+            paymentStatus: "Refunded",
+            status: "CANCELLED"
+          }
+        });
+
+        if (updateResult.count === 0) throw new Error("ConcurrencyError: Dispute resolution failed");
+
+        await tx.orderDispute.update({
+          where: { orderId },
+          data: { status: "RESOLVED_SPLIT", resolvedById, resolutionNotes: `${notes} (Split: Farmer ${splitFarmerAmount}, Buyer ${splitBuyerAmount})` }
+        });
+
+        const firstFarmerId = order.items[0]?.listing.farmerId;
+        if (firstFarmerId && splitFarmerAmount > 0) {
+          const farmer = await tx.user.findUnique({ where: { id: firstFarmerId } });
+          if (farmer) {
+            await tx.user.update({
+              where: { id: firstFarmerId },
+              data: { walletBalance: farmer.walletBalance + splitFarmerAmount }
+            });
+
+            await tx.transaction.create({
+              data: {
+                userId: firstFarmerId,
+                type: "Payout",
+                amount: splitFarmerAmount,
+                status: "Success",
+                description: `Dispute split resolution payout for Order: ${orderId}`
+              }
+            });
+          }
+        }
+
+        if (splitBuyerAmount > 0) {
+          const buyer = await tx.user.findUnique({ where: { id: order.buyerId } });
+          if (buyer) {
+            await tx.user.update({
+              where: { id: order.buyerId },
+              data: { walletBalance: buyer.walletBalance + splitBuyerAmount }
+            });
+
+            await tx.transaction.create({
+              data: {
+                userId: order.buyerId,
+                type: "Refund",
+                amount: splitBuyerAmount,
+                status: "Success",
+                description: `Dispute split resolution refund for Order: ${orderId}`
+              }
+            });
+          }
+        }
       }
 
       return { success: true };
