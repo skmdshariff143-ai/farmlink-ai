@@ -105,8 +105,27 @@ export const PaymentFintechService = {
       });
 
       if (!order) throw new Error("Order not found");
+      if (order.status !== "DELIVERED") {
+        throw new Error("Cannot release escrow for orders that are not delivered");
+      }
       if (order.paymentStatus !== "Paid") throw new Error("Cannot release escrow for unpaid orders");
       if (order.escrowReleased) throw new Error("Escrow already paid out to farmers");
+
+      // Atomic conditional check to prevent concurrent double-releases
+      const updateResult = await tx.order.updateMany({
+        where: {
+          id: orderId,
+          escrowReleased: false,
+          paymentStatus: "Paid"
+        },
+        data: {
+          escrowReleased: true
+        }
+      });
+
+      if (updateResult.count === 0) {
+        throw new Error("AlreadyProcessed: Escrow release payout has already been processed or status changed");
+      }
 
       // Release payout to each farmer involved in the order
       for (const item of order.items) {
@@ -134,12 +153,6 @@ export const PaymentFintechService = {
         }
       }
 
-      // Mark order escrow as released
-      await tx.order.update({
-        where: { id: orderId },
-        data: { escrowReleased: true }
-      });
-
       return { success: true };
     });
   },
@@ -150,6 +163,23 @@ export const PaymentFintechService = {
       if (!order) throw new Error("Order not found");
       if (order.paymentStatus !== "Paid") throw new Error("Only completed payments can be refunded");
       if (order.escrowReleased) throw new Error("Cannot refund orders after farmer payout has been released");
+
+      // Atomic conditional check to prevent concurrent releases/refunds
+      const updateResult = await tx.order.updateMany({
+        where: {
+          id: orderId,
+          escrowReleased: false,
+          paymentStatus: "Paid"
+        },
+        data: {
+          paymentStatus: "Refunded",
+          status: "CANCELLED"
+        }
+      });
+
+      if (updateResult.count === 0) {
+        throw new Error("AlreadyProcessed: Escrow refund has already been processed or status changed");
+      }
 
       // Refund the total back to the buyer wallet
       const buyer = await tx.user.findUnique({ where: { id: order.buyerId } });
@@ -170,12 +200,6 @@ export const PaymentFintechService = {
           }
         });
       }
-
-      // Update order status
-      await tx.order.update({
-        where: { id: orderId },
-        data: { paymentStatus: "Refunded", status: "PENDING" } // reset status
-      });
 
       return { success: true };
     });
