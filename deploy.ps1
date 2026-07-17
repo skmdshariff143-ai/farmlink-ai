@@ -61,7 +61,6 @@ if ($dbUrl) {
     # Update local .env.local
     $envContent = @"
 DATABASE_URL="$dbUrl"
-NEXTAUTH_SECRET="farmlink-ai-super-secret-payout-auth-hash-32"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 "@
     Set-Content -Path .env.local -Value $envContent
@@ -70,8 +69,6 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
     # Upload env vars to Vercel
     Write-Host "Uploading DATABASE_URL to Vercel..." -ForegroundColor Cyan
     $dbUrl | npx vercel env add DATABASE_URL production
-    Write-Host "Uploading NEXTAUTH_SECRET to Vercel..." -ForegroundColor Cyan
-    "farmlink-ai-super-secret-payout-auth-hash-32" | npx vercel env add NEXTAUTH_SECRET production
     Write-Host "Uploading NEXT_PUBLIC_APP_URL to Vercel..." -ForegroundColor Cyan
     "https://farmlink-ai.vercel.app" | npx vercel env add NEXT_PUBLIC_APP_URL production
 }

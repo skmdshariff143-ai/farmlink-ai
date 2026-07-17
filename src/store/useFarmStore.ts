@@ -47,11 +47,25 @@ export interface Order {
   total: number;
   buyerName: string;
   buyerId: string;
-  status: "Pending" | "Confirmed" | "In Transit" | "Delivered";
+  status: "Pending" | "Confirmed" | "In Transit" | "Delivered" | "Cancelled";
   paymentMethod: string;
   paymentStatus: "Paid" | "Pending" | "Refunded";
   trackingStep: number; // 0: ordered, 1: packed, 2: transit, 3: completed
   deliveryDate: string;
+  disputed?: boolean;
+  createdAt: string;
+}
+
+export interface OrderDispute {
+  id: string;
+  orderId: string;
+  raisedById: string;
+  raisedByRole: "BUYER" | "FARMER";
+  reason: string;
+  description: string;
+  status: "OPEN" | "RESOLVED_REFUND" | "RESOLVED_RELEASE" | "RESOLVED_SPLIT";
+  resolvedById?: string;
+  resolutionNotes?: string;
   createdAt: string;
 }
 
@@ -152,6 +166,11 @@ interface FarmState {
   createOrder: (paymentMethod: string) => void;
   updateOrderStatus: (id: string, status: Order["status"], step: number) => void;
   syncOrders: (orders: Order[]) => void;
+
+  // Disputes
+  disputes: OrderDispute[];
+  raiseDispute: (orderId: string, reason: string, description: string) => void;
+  resolveDispute: (orderId: string, resolution: "RESOLVED_REFUND" | "RESOLVED_RELEASE" | "RESOLVED_SPLIT", notes: string, splitFarmerAmount?: number, splitBuyerAmount?: number) => void;
 
   // Bookings
   transportBookings: TransportBooking[];
@@ -410,6 +429,19 @@ const defaultNotifications: FarmNotification[] = [
   },
 ];
 
+const defaultDisputes: OrderDispute[] = [
+  {
+    id: "dis_101",
+    orderId: "ord_101",
+    raisedById: "user_01",
+    raisedByRole: "BUYER",
+    reason: "Quality Issues",
+    description: "The turmeric bulbs have high moisture levels and show signs of white mold on the outer skin.",
+    status: "OPEN",
+    createdAt: "2026-06-30T10:00:00Z",
+  }
+];
+
 export const useFarmStore = create<FarmState>()(
   persist(
     (set, get) => ({
@@ -535,6 +567,7 @@ export const useFarmStore = create<FarmState>()(
           paymentStatus: "Paid",
           trackingStep: 1,
           deliveryDate: "03 July 2026",
+          disputed: true,
           createdAt: "2026-06-29T10:00:00Z",
         },
       ],
@@ -586,6 +619,87 @@ export const useFarmStore = create<FarmState>()(
           ),
         })),
       syncOrders: (orders) => set({ orders }),
+
+      // Disputes
+      disputes: defaultDisputes,
+      raiseDispute: (orderId, reason, description) =>
+        set((state) => {
+          const newDispute: OrderDispute = {
+            id: `dis_${Date.now().toString().slice(-4)}`,
+            orderId,
+            raisedById: state.currentUser.id,
+            raisedByRole: state.currentUser.role === "Buyer" ? "BUYER" : "FARMER",
+            reason,
+            description,
+            status: "OPEN",
+            createdAt: new Date().toISOString()
+          };
+
+          return {
+            disputes: [newDispute, ...state.disputes],
+            orders: state.orders.map((o) =>
+              o.id === orderId ? { ...o, disputed: true } : o
+            )
+          };
+        }),
+      resolveDispute: (orderId, resolution, notes, splitFarmerAmount, splitBuyerAmount) =>
+        set((state) => {
+          const dispute = state.disputes.find(d => d.orderId === orderId);
+          if (!dispute) return {};
+
+          const order = state.orders.find(o => o.id === orderId);
+          if (!order) return {};
+
+          let updatedOrders = [...state.orders];
+          let updatedFarmerBalance = 0;
+          let updatedBuyerBalance = 0;
+
+          if (resolution === "RESOLVED_RELEASE") {
+            updatedOrders = state.orders.map((o) =>
+              o.id === orderId ? { ...o, disputed: false, status: "Delivered", trackingStep: 3 } : o
+            );
+            updatedFarmerBalance = order.total;
+          } else if (resolution === "RESOLVED_REFUND") {
+            updatedOrders = state.orders.map((o) =>
+              o.id === orderId ? { ...o, disputed: false, paymentStatus: "Refunded", status: "Cancelled" } : o
+            );
+            updatedBuyerBalance = order.total;
+          } else if (resolution === "RESOLVED_SPLIT") {
+            updatedOrders = state.orders.map((o) =>
+              o.id === orderId ? { ...o, disputed: false, paymentStatus: "Refunded", status: "Cancelled" } : o
+            );
+            updatedFarmerBalance = splitFarmerAmount || 0;
+            updatedBuyerBalance = splitBuyerAmount || 0;
+          }
+
+          // Update current user balance
+          let newBalance = state.currentUser.walletBalance;
+          if (state.currentUser.role === "Buyer") {
+            newBalance += updatedBuyerBalance;
+          } else if (state.currentUser.role === "Farmer") {
+            newBalance += updatedFarmerBalance;
+          }
+
+          const updatedDisputes = state.disputes.map((d) =>
+            d.orderId === orderId
+              ? {
+                  ...d,
+                  status: resolution as any,
+                  resolvedById: state.currentUser.id,
+                  resolutionNotes: notes
+                }
+              : d
+          );
+
+          return {
+            disputes: updatedDisputes,
+            orders: updatedOrders,
+            currentUser: {
+              ...state.currentUser,
+              walletBalance: newBalance
+            }
+          };
+        }),
 
       // Bookings
       transportBookings: [

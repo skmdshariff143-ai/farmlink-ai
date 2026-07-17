@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Navbar from "@/components/layout/Navbar";
 import AIChatbot from "@/components/layout/AIChatbot";
 import { useFarmStore, CropListing, OrderItem } from "@/store/useFarmStore";
+import { useSocket } from "@/hooks/useSocket";
 import { 
   Search, SlidersHorizontal, ShoppingCart, Heart, MapPin, 
   MessageSquare, Plus, Minus, X, Check, Award, AlertCircle,
@@ -12,6 +13,109 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import confetti from "canvas-confetti";
+
+interface CropListingCardProps {
+  crop: CropListing;
+  categoriesColors: Record<string, string>;
+  wishlist: string[];
+  handleToggleWishlist: (id: string) => void;
+  handleChatWithFarmer: (name: string, avatar: string) => void;
+  handleAddToCart: (crop: CropListing) => void;
+}
+
+function CropListingCard({
+  crop,
+  categoriesColors,
+  wishlist,
+  handleToggleWishlist,
+  handleChatWithFarmer,
+  handleAddToCart
+}: CropListingCardProps) {
+  // Subscribe to live bidding socket updates for this listing
+  const { bidTick } = useSocket({ listingId: crop.id });
+  const currentPrice = bidTick ? bidTick.bidAmount : crop.price;
+
+  return (
+    <div className="bg-white dark:bg-card-bg border border-border-nature rounded-3xl overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col justify-between">
+      <div>
+        {/* Image block */}
+        <div className="relative aspect-video w-full bg-bg-nature">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={crop.image}
+            alt={crop.name}
+            className="object-cover w-full h-full"
+          />
+          
+          {/* Category tag */}
+          <span className={`absolute top-3 left-3 text-[9px] font-bold px-2 py-0.5 rounded-full ${categoriesColors[crop.category] || "bg-gray-100 text-gray-800"}`}>
+            {crop.category}
+          </span>
+          
+          {/* Wishlist toggle */}
+          <button
+            onClick={() => handleToggleWishlist(crop.id)}
+            className="absolute top-3 right-3 p-1.5 bg-white dark:bg-card-bg rounded-full text-gray-400 hover:text-red-500 shadow-md transition-all"
+          >
+            <Heart className={`h-4 w-4 ${wishlist.includes(crop.id) ? "fill-red-500 text-red-500" : ""}`} />
+          </button>
+        </div>
+
+        {/* Details block */}
+        <div className="p-4 space-y-2">
+          <div className="flex justify-between items-start">
+            <h4 className="text-sm font-bold text-text-charcoal truncate">{crop.name}</h4>
+            <span className="flex items-center gap-0.5 text-primary text-[9px] font-black bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
+              <Award className="h-3 w-3 shrink-0" />
+              A+ Grade
+            </span>
+          </div>
+
+          <div className="flex items-baseline gap-1">
+            <span className="text-lg font-black text-text-charcoal">₹{currentPrice}</span>
+            <span className="text-[10px] text-gray-400">/ kg</span>
+            {crop.originalPrice && (
+              <span className="text-xs text-gray-400 line-through ml-1">₹{crop.originalPrice}</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1 text-[10px] text-gray-500">
+            <MapPin className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+            <span className="truncate">{crop.location} ({crop.distance || "12 km"})</span>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-border-nature pt-3 mt-1.5">
+            <div className="flex items-center gap-1.5">
+              {/* Farmer Contact info */}
+              <div className="text-[10px]">
+                <div className="font-bold text-text-charcoal truncate max-w-[110px]">{crop.farmerName}</div>
+                <div className="text-primary font-bold text-[9px]">Rating: ★ {crop.rating}</div>
+              </div>
+            </div>
+            <button
+              onClick={() => handleChatWithFarmer(crop.farmerName, "https://images.unsplash.com/photo-1542838132-92c53300491e?w=150&auto=format&fit=crop&q=80")}
+              className="p-1.5 rounded-xl border border-border-nature hover:bg-primary/5 hover:border-primary text-gray-500 hover:text-primary transition-all"
+              title="Chat with farmer"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Add action */}
+      <div className="px-4 pb-4">
+        <button
+          onClick={() => handleAddToCart({ ...crop, price: currentPrice })}
+          className="w-full py-2 bg-primary hover:bg-primary-hover text-white rounded-2xl text-xs font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add 100kg to Cart
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function MarketplacePage() {
   const router = useRouter();
@@ -258,87 +362,15 @@ export default function MarketplacePage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredListings.map((crop) => (
-                <div
+                <CropListingCard
                   key={crop.id}
-                  className="bg-white dark:bg-card-bg border border-border-nature rounded-3xl overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col justify-between"
-                >
-                  <div>
-                    {/* Image block */}
-                    <div className="relative aspect-video w-full bg-bg-nature">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={crop.image}
-                        alt={crop.name}
-                        className="object-cover w-full h-full"
-                      />
-                      
-                      {/* Category tag */}
-                      <span className={`absolute top-3 left-3 text-[9px] font-bold px-2 py-0.5 rounded-full ${categoriesColors[crop.category] || "bg-gray-100 text-gray-800"}`}>
-                        {crop.category}
-                      </span>
-                      
-                      {/* Wishlist toggle */}
-                      <button
-                        onClick={() => handleToggleWishlist(crop.id)}
-                        className="absolute top-3 right-3 p-1.5 bg-white dark:bg-card-bg rounded-full text-gray-400 hover:text-red-500 shadow-md transition-all"
-                      >
-                        <Heart className={`h-4 w-4 ${wishlist.includes(crop.id) ? "fill-red-500 text-red-500" : ""}`} />
-                      </button>
-                    </div>
-
-                    {/* Details block */}
-                    <div className="p-4 space-y-2">
-                      <div className="flex justify-between items-start">
-                        <h4 className="text-sm font-bold text-text-charcoal truncate">{crop.name}</h4>
-                        <span className="flex items-center gap-0.5 text-primary text-[9px] font-black bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
-                          <Award className="h-3 w-3 shrink-0" />
-                          A+ Grade
-                        </span>
-                      </div>
-
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-lg font-black text-text-charcoal">₹{crop.price}</span>
-                        <span className="text-[10px] text-gray-400">/ kg</span>
-                        {crop.originalPrice && (
-                          <span className="text-xs text-gray-400 line-through ml-1">₹{crop.originalPrice}</span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                        <MapPin className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                        <span className="truncate">{crop.location} ({crop.distance || "12 km"})</span>
-                      </div>
-
-                      <div className="flex items-center justify-between border-t border-border-nature pt-3 mt-1.5">
-                        <div className="flex items-center gap-1.5">
-                          {/* Farmer Contact info */}
-                          <div className="text-[10px]">
-                            <div className="font-bold text-text-charcoal truncate max-w-[110px]">{crop.farmerName}</div>
-                            <div className="text-primary font-bold text-[9px]">Rating: ★ {crop.rating}</div>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleChatWithFarmer(crop.farmerName, "https://images.unsplash.com/photo-1542838132-92c53300491e?w=150&auto=format&fit=crop&q=80")}
-                          className="p-1.5 rounded-xl border border-border-nature hover:bg-primary/5 hover:border-primary text-gray-500 hover:text-primary transition-all"
-                          title="Chat with farmer"
-                        >
-                          <MessageSquare className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Add action */}
-                  <div className="px-4 pb-4">
-                    <button
-                      onClick={() => handleAddToCart(crop)}
-                      className="w-full py-2 bg-primary hover:bg-primary-hover text-white rounded-2xl text-xs font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Add 100kg to Cart
-                    </button>
-                  </div>
-                </div>
+                  crop={crop}
+                  categoriesColors={categoriesColors}
+                  wishlist={wishlist}
+                  handleToggleWishlist={handleToggleWishlist}
+                  handleChatWithFarmer={handleChatWithFarmer}
+                  handleAddToCart={handleAddToCart}
+                />
               ))}
             </div>
           )}
@@ -463,6 +495,11 @@ export default function MarketplacePage() {
                     <h3 className="font-extrabold text-sm text-text-charcoal">Select Escrow Payment</h3>
                     <p className="text-[10px] text-gray-400">Funds are held in secure escrow until shipping is completed.</p>
                   </div>
+                  {process.env.NEXT_PUBLIC_DEMO_MODE !== "false" && (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl text-blue-800 text-[10px] text-center font-bold">
+                      ℹ️ Demo mode — payments are simulated, no real transactions occur.
+                    </div>
+                  )}
 
                   <div className="space-y-2">
                     {/* Wallet */}

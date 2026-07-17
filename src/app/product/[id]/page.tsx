@@ -4,6 +4,7 @@ import React, { useState, Suspense, use } from "react";
 import Navbar from "@/components/layout/Navbar";
 import AIChatbot from "@/components/layout/AIChatbot";
 import { useFarmStore, CropListing, OrderItem } from "@/store/useFarmStore";
+import { useSocket } from "@/hooks/useSocket";
 import { 
   ArrowLeft, MapPin, Award, ShieldCheck, MessageSquare, 
   ShoppingCart, Heart, QrCode, Check, AlertCircle, Plus, Minus
@@ -38,6 +39,22 @@ function ProductDetailContent({ params }: ProductPageProps) {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkoutStep, setCheckoutStep] = useState<"options" | "upi" | "success">("options");
   const [checkoutMethod, setCheckoutMethod] = useState("UPI (GPay)");
+  const [bidAmountInput, setBidAmountInput] = useState("");
+
+  // Wire up the live bidding Socket.IO hook
+  const {
+    connected,
+    bidTick,
+    emitBid,
+    bidError,
+    rateLimitError,
+    clearBidError,
+    clearRateLimitError
+  } = useSocket(
+    id ? { listingId: id, userContext: { id: currentUser.id, name: currentUser.name } } : {}
+  );
+
+  const currentPrice = bidTick && bidTick.listingId === crop.id ? bidTick.bidAmount : crop.price;
 
   if (!crop) {
     return (
@@ -53,11 +70,20 @@ function ProductDetailContent({ params }: ProductPageProps) {
     );
   }
 
+  const handlePlaceBid = () => {
+    const amount = parseFloat(bidAmountInput);
+    if (isNaN(amount) || amount <= 0) {
+      return;
+    }
+    emitBid(crop.id, crop.name, amount);
+    setBidAmountInput("");
+  };
+
   const handleAddToCart = () => {
     const item: OrderItem = {
       listingId: crop.id,
       name: crop.name,
-      price: crop.price,
+      price: currentPrice,
       quantity: qty,
       farmerName: crop.farmerName
     };
@@ -75,7 +101,7 @@ function ProductDetailContent({ params }: ProductPageProps) {
     router.push(`/chat?id=${chatRoomId}`);
   };
 
-  const totalPrice = crop.price * qty;
+  const totalPrice = currentPrice * qty;
 
   const handleFinalOrderSubmit = () => {
     if (checkoutMethod === "UPI (GPay)") {
@@ -85,7 +111,7 @@ function ProductDetailContent({ params }: ProductPageProps) {
         const item: OrderItem = {
           listingId: crop.id,
           name: crop.name,
-          price: crop.price,
+          price: currentPrice,
           quantity: qty,
           farmerName: crop.farmerName
         };
@@ -98,7 +124,7 @@ function ProductDetailContent({ params }: ProductPageProps) {
       const item: OrderItem = {
         listingId: crop.id,
         name: crop.name,
-        price: crop.price,
+        price: currentPrice,
         quantity: qty,
         farmerName: crop.farmerName
       };
@@ -158,7 +184,7 @@ function ProductDetailContent({ params }: ProductPageProps) {
 
               <h2 className="text-xl font-black text-text-charcoal leading-tight">{crop.name}</h2>
               <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-black text-text-charcoal">₹{crop.price}</span>
+                <span className="text-2xl font-black text-text-charcoal">₹{currentPrice}</span>
                 <span className="text-xs text-gray-400">/ kg</span>
               </div>
 
@@ -172,6 +198,47 @@ function ProductDetailContent({ params }: ProductPageProps) {
 
             {/* Buying Action Section */}
             <div className="space-y-4 pt-3 border-t border-border-nature">
+              {/* Live Bidding Section */}
+              <div className="border border-border-nature rounded-2xl p-4 bg-bg-nature/10 space-y-3">
+                <div className="flex justify-between items-center text-[10px] text-gray-500 uppercase font-black">
+                  <span className="flex items-center gap-1">🔨 Live Bidding Console</span>
+                  <span className="flex items-center gap-1">
+                    <span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-green-500 animate-pulse" : "bg-orange-500"}`} />
+                    {connected ? "Live connected" : "Reconnecting..."}
+                  </span>
+                </div>
+                
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={bidAmountInput}
+                    onChange={(e) => setBidAmountInput(e.target.value)}
+                    placeholder={`Enter bid (> ₹${currentPrice})`}
+                    className="flex-1 px-3 py-2 border border-border-nature rounded-xl text-xs bg-white dark:bg-card-bg text-text-charcoal font-semibold"
+                  />
+                  <button
+                    onClick={handlePlaceBid}
+                    className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl text-xs font-bold transition-all shadow-md shrink-0"
+                  >
+                    Place Bid
+                  </button>
+                </div>
+
+                {bidError && (
+                  <div className="text-[10px] text-red-600 font-bold bg-red-50 p-2 rounded-xl flex justify-between items-center border border-red-200">
+                    <span>⚠️ {bidError}</span>
+                    <button onClick={clearBidError} className="text-red-400 hover:text-red-600">✕</button>
+                  </div>
+                )}
+                
+                {rateLimitError && (
+                  <div className="text-[10px] text-red-600 font-bold bg-red-50 p-2 rounded-xl flex justify-between items-center border border-red-200">
+                    <span>⚠️ {rateLimitError}</span>
+                    <button onClick={clearRateLimitError} className="text-red-400 hover:text-red-600">✕</button>
+                  </div>
+                )}
+              </div>
+
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-gray-400">Purchase Volume</span>
                 <div className="flex items-center gap-2 border border-border-nature rounded-xl p-1 bg-white dark:bg-card-bg">
@@ -235,6 +302,11 @@ function ProductDetailContent({ params }: ProductPageProps) {
                   <div className="text-center space-y-1">
                     <h3 className="font-extrabold text-sm text-text-charcoal">Select Escrow Payment</h3>
                   </div>
+                  {process.env.NEXT_PUBLIC_DEMO_MODE !== "false" && (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl text-blue-800 text-[10px] text-center font-bold">
+                      ℹ️ Demo mode — payments are simulated, no real transactions occur.
+                    </div>
+                  )}
 
                   <div className="space-y-2">
                     <div 

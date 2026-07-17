@@ -37,7 +37,9 @@ function DashboardContent() {
     notifications,
     addNotification,
     achievements,
-    unlockAchievement
+    unlockAchievement,
+    disputes,
+    resolveDispute
   } = useFarmStore();
 
   // Local form states
@@ -55,6 +57,13 @@ function DashboardContent() {
   const [whType, setWhType] = useState<"Cold Storage" | "Dry Storage">("Cold Storage");
   const [whCapacity, setWhCapacity] = useState(5);
   const [whMonths, setWhMonths] = useState(3);
+
+  // Dispute resolution form states
+  const [selectedDispute, setSelectedDispute] = useState<any>(null);
+  const [resNotes, setResNotes] = useState("");
+  const [resType, setResType] = useState<"RESOLVED_RELEASE" | "RESOLVED_REFUND" | "RESOLVED_SPLIT">("RESOLVED_RELEASE");
+  const [splitFarmer, setSplitFarmer] = useState(0);
+  const [splitBuyer, setSplitBuyer] = useState(0);
 
   // Trigger crop upload
   const handleCropSubmit = (e: React.FormEvent) => {
@@ -136,6 +145,43 @@ function DashboardContent() {
     );
 
     confetti({ particleCount: 30 });
+  };
+
+  const handleResolveDispute = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedDispute || !resNotes) return;
+
+    const order = orders.find(o => o.id === selectedDispute.orderId);
+    if (!order) return;
+
+    if (resType === "RESOLVED_SPLIT") {
+      const sum = Number(splitFarmer) + Number(splitBuyer);
+      if (Math.round(sum * 100) !== Math.round(order.total * 100)) {
+        alert(`Mismatched splits: Sum of splits (₹${sum}) must equal the order total (₹${order.total})`);
+        return;
+      }
+    }
+
+    resolveDispute(
+      selectedDispute.orderId,
+      resType,
+      resNotes,
+      resType === "RESOLVED_SPLIT" ? Number(splitFarmer) : undefined,
+      resType === "RESOLVED_SPLIT" ? Number(splitBuyer) : undefined
+    );
+
+    addNotification(
+      "Dispute Resolved ⚖️",
+      `Order #${selectedDispute.orderId.slice(-6)} dispute resolved as ${resType}.`,
+      "success"
+    );
+
+    setSelectedDispute(null);
+    setResNotes("");
+    setSplitFarmer(0);
+    setSplitBuyer(0);
+
+    confetti({ particleCount: 60, spread: 80 });
   };
 
   return (
@@ -970,6 +1016,162 @@ function DashboardContent() {
                       Approve Grade-A
                     </button>
                   </div>
+                </div>
+              )}
+
+              {activeTab === "disputes" && (
+                <div className="space-y-6">
+                  <div className="bg-white dark:bg-card-bg border border-border-nature rounded-3xl p-5 shadow-sm space-y-4">
+                    <h3 className="text-sm font-bold text-text-charcoal flex items-center gap-1.5">
+                      <ShieldAlert className="h-5 w-5 text-primary" />
+                      Active Escrow & Payout Disputes
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-border-nature text-[10px] text-gray-400 font-extrabold uppercase">
+                            <th className="py-2.5">Dispute ID</th>
+                            <th>Order ID</th>
+                            <th>Raised By</th>
+                            <th>Reason</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="text-xs font-semibold text-text-charcoal">
+                          {disputes.map((d: any) => (
+                            <tr key={d.id} className="border-b border-border-nature">
+                              <td className="py-3 font-bold text-primary">#{d.id.slice(-4)}</td>
+                              <td>#{d.orderId.slice(-6)}</td>
+                              <td>
+                                <span className="font-bold">{d.raisedByRole}</span> (ID: {d.raisedById.slice(-5)})
+                              </td>
+                              <td>
+                                <div className="font-bold">{d.reason}</div>
+                                <div className="text-[10px] text-gray-400 font-normal">{d.description}</div>
+                              </td>
+                              <td>
+                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                                  d.status === "OPEN" 
+                                    ? "bg-red-50 text-red-700" 
+                                    : d.status === "RESOLVED_RELEASE"
+                                    ? "bg-green-50 text-primary"
+                                    : "bg-blue-50 text-blue-700"
+                                }`}>
+                                  {d.status}
+                                </span>
+                              </td>
+                              <td>
+                                {d.status === "OPEN" ? (
+                                  <button
+                                    onClick={() => {
+                                      setSelectedDispute(d);
+                                      const ord = orders.find(o => o.id === d.orderId);
+                                      if (ord) {
+                                        setSplitFarmer(Math.round(ord.total * 0.6));
+                                        setSplitBuyer(Math.round(ord.total * 0.4));
+                                      }
+                                    }}
+                                    className="px-3 py-1 bg-primary text-white rounded-lg hover:bg-primary-hover font-bold animate-pulse"
+                                  >
+                                    Resolve
+                                  </button>
+                                ) : (
+                                  <div className="text-[10px] text-gray-400 max-w-xs truncate">
+                                    Resolved: {d.resolutionNotes}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Resolution Modal */}
+                  {selectedDispute && (
+                    <>
+                      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                        <div className="bg-white dark:bg-card-bg rounded-3xl border border-border-nature shadow-2xl p-6 max-w-md w-full space-y-4 text-xs font-semibold text-text-charcoal relative">
+                          <h3 className="text-sm font-black flex items-center gap-1">
+                            ⚖️ Resolve Dispute #{selectedDispute.id.slice(-4)}
+                          </h3>
+                          <p className="text-[10px] text-gray-400 leading-relaxed">
+                            Evaluate crop conditions, transport reports, and escrow terms to finalize payout resolution.
+                          </p>
+
+                          <form onSubmit={handleResolveDispute} className="space-y-4">
+                            <div>
+                              <label className="text-[10px] text-gray-400 font-bold block mb-1">Resolution Outcome</label>
+                              <select
+                                value={resType}
+                                onChange={(e) => setResType(e.target.value as any)}
+                                className="w-full px-3 py-2 border border-border-nature rounded-xl outline-none"
+                              >
+                                <option value="RESOLVED_RELEASE">Release Escrow (100% to Farmer)</option>
+                                <option value="RESOLVED_REFUND">Refund Escrow (100% to Buyer)</option>
+                                <option value="RESOLVED_SPLIT">Split Payout (Custom Ratio)</option>
+                              </select>
+                            </div>
+
+                            {resType === "RESOLVED_SPLIT" && (
+                              <div className="grid grid-cols-2 gap-4 p-3 bg-bg-nature/20 border border-border-nature rounded-2xl">
+                                <div>
+                                  <label className="text-[10px] text-gray-400 font-bold block mb-1">Farmer Share (₹)</label>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={splitFarmer}
+                                    onChange={(e) => setSplitFarmer(Number(e.target.value))}
+                                    className="w-full px-3 py-1.5 border border-border-nature rounded-xl outline-none"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] text-gray-400 font-bold block mb-1">Buyer Share (₹)</label>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={splitBuyer}
+                                    onChange={(e) => setSplitBuyer(Number(e.target.value))}
+                                    className="w-full px-3 py-1.5 border border-border-nature rounded-xl outline-none"
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            <div>
+                              <label className="text-[10px] text-gray-400 font-bold block mb-1">Resolution Audit Notes</label>
+                              <textarea
+                                required
+                                rows={3}
+                                placeholder="Audit logs, inspector findings, or split agreement details..."
+                                value={resNotes}
+                                onChange={(e) => setResNotes(e.target.value)}
+                                className="w-full px-3 py-2 border border-border-nature rounded-xl outline-none"
+                              />
+                            </div>
+
+                            <div className="flex gap-3 pt-2">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedDispute(null)}
+                                className="flex-1 py-2.5 border border-border-nature rounded-xl hover:bg-gray-50"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="submit"
+                                className="flex-1 py-2.5 bg-primary text-white rounded-xl font-bold hover:bg-primary-hover shadow-sm"
+                              >
+                                Resolve Now
+                              </button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 

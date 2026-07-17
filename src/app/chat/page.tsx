@@ -5,6 +5,7 @@ import Navbar from "@/components/layout/Navbar";
 import AIChatbot from "@/components/layout/AIChatbot";
 import { useFarmStore, ChatRoom } from "@/store/useFarmStore";
 import { useSearchParams, useRouter } from "next/navigation";
+import { useSocket } from "@/hooks/useSocket";
 import { 
   Send, Mic, Image as ImageIcon, Video, Phone, CheckCheck, 
   Circle, ChevronLeft, ArrowLeft, Bot, VideoOff
@@ -17,7 +18,7 @@ function ChatContent() {
   const router = useRouter();
   const roomIdFromUrl = searchParams.get("id");
 
-  const { chatRooms, addMessage, currentUser } = useFarmStore();
+  const { chatRooms, currentUser } = useFarmStore();
 
   const [activeRoomId, setActiveRoomId] = useState<string>("");
   const [inputText, setInputText] = useState("");
@@ -26,11 +27,47 @@ function ChatContent() {
   const [callStatus, setCallStatus] = useState("Connecting...");
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Wire up the realtime Socket.IO hook
+  const {
+    connected,
+    typingUsers,
+    messages: socketMessages,
+    sendChatMessage,
+    startTyping,
+    stopTyping,
+    rateLimitError,
+    messageError,
+    clearRateLimitError,
+    clearMessageError
+  } = useSocket(
+    activeRoomId 
+      ? { roomId: activeRoomId, userContext: { id: currentUser.id, name: currentUser.name } } 
+      : {}
+  );
+
+  const activeRoom = chatRooms.find((r) => r.id === activeRoomId);
+  const messagesToRender = socketMessages.length > 0 ? socketMessages : (activeRoom?.messages || []);
+
+  const formatTime = (ts: any) => {
+    if (!ts) return "";
+    if (typeof ts === "string" && (ts.includes("AM") || ts.includes("PM") || ts.includes(":"))) {
+      if (!ts.includes("T")) {
+        return ts;
+      }
+    }
+    try {
+      return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return String(ts);
+    }
+  };
 
   // Auto scroll
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatRooms, isTyping]);
+  }, [messagesToRender, isTyping, typingUsers]);
 
   // Handle URL changes
   useEffect(() => {
@@ -43,57 +80,41 @@ function ChatContent() {
     }
   }, [roomIdFromUrl, chatRooms, activeRoomId]);
 
-  const activeRoom = chatRooms.find((r) => r.id === activeRoomId);
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputText(e.target.value);
+    if (activeRoomId) {
+      startTyping();
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      typingTimeoutRef.current = setTimeout(() => {
+        stopTyping();
+      }, 2000);
+    }
+  };
 
   const handleSend = () => {
     if (!inputText.trim() || !activeRoomId) return;
 
-    addMessage(
-      activeRoomId,
-      currentUser.id,
-      currentUser.name,
-      inputText
-    );
-    
+    sendChatMessage(inputText);
     setInputText("");
-
-    // Simulate typing indicator and response from other participant
-    setIsTyping(true);
-    setTimeout(() => {
-      setIsTyping(false);
-      let replyText = "Received your message. We are processing this trade option.";
-      
-      if (activeRoom?.participantRole === "Buyer") {
-        replyText = "Sounds good. Please arrange the transport pickup. I'll make sure the escrow release code is updated as soon as the load is weighed.";
-      } else if (activeRoom?.participantRole === "Transport") {
-        replyText = "My truck will arrive at 8:00 AM tomorrow. Please make sure the grains are dry and bagged for fast loading.";
-      }
-
-      addMessage(
-        activeRoomId,
-        activeRoom?.participantName === "Express Logistics (Harpreet)" ? "user_harpreet" : "user_nikhil",
-        activeRoom?.participantName || "Trader",
-        replyText
-      );
-    }, 2000);
+    
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    stopTyping();
   };
 
   const handleSimulatedMedia = (type: "image" | "audio") => {
     if (!activeRoomId) return;
 
     if (type === "image") {
-      addMessage(
-        activeRoomId,
-        currentUser.id,
-        currentUser.name,
+      sendChatMessage(
         "",
         "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=500&auto=format&fit=crop&q=80"
       );
     } else {
-      addMessage(
-        activeRoomId,
-        currentUser.id,
-        currentUser.name,
+      sendChatMessage(
         "",
         undefined,
         true
@@ -199,11 +220,12 @@ function ChatContent() {
                     />
                   </div>
                   <div>
-                    <h3 className="font-bold text-xs text-text-charcoal leading-none">
+                    <h3 className="font-bold text-xs text-text-charcoal leading-none flex items-center gap-1.5">
                       {activeRoom.participantName}
+                      <span className={`inline-block h-1.5 w-1.5 rounded-full ${connected ? "bg-green-500" : "bg-orange-500 animate-pulse"}`} title={connected ? "Connected" : "Reconnecting..."} />
                     </h3>
                     <span className="text-[9px] text-primary font-bold mt-1 inline-block">
-                      {activeRoom.participantRole} • {activeRoom.online ? "Online" : "Away"}
+                      {activeRoom.participantRole} • {connected ? "Live" : "Reconnecting..."}
                     </span>
                   </div>
                 </div>
@@ -222,8 +244,26 @@ function ChatContent() {
               </div>
 
               {/* Message Feed */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {activeRoom.messages.map((m) => {
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 relative">
+                {/* Rate limit / message errors alerts */}
+                {(rateLimitError || messageError) && (
+                  <div className="sticky top-2 left-0 right-0 z-20 space-y-2">
+                    {rateLimitError && (
+                      <div className="bg-red-50 border border-red-200 text-red-800 p-2.5 rounded-2xl flex justify-between items-center text-[10px] font-bold shadow-md">
+                        <span>⚠️ {rateLimitError}</span>
+                        <button onClick={clearRateLimitError} className="text-red-500 hover:text-red-700 ml-2">✕</button>
+                      </div>
+                    )}
+                    {messageError && (
+                      <div className="bg-red-50 border border-red-200 text-red-800 p-2.5 rounded-2xl flex justify-between items-center text-[10px] font-bold shadow-md">
+                        <span>⚠️ {messageError}</span>
+                        <button onClick={clearMessageError} className="text-red-500 hover:text-red-700 ml-2">✕</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {messagesToRender.map((m) => {
                   const isMe = m.senderId === currentUser.id;
                   return (
                     <div key={m.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
@@ -263,7 +303,7 @@ function ChatContent() {
                         <div className={`text-[9px] text-gray-400 flex items-center gap-1 ${
                           isMe ? "justify-end" : "justify-start"
                         }`}>
-                          <span>{m.timestamp}</span>
+                          <span>{formatTime(m.timestamp)}</span>
                           {isMe && <CheckCheck className="h-3 w-3 text-primary" />}
                         </div>
                       </div>
@@ -271,14 +311,14 @@ function ChatContent() {
                   );
                 })}
 
-                {/* Typing Simulator */}
-                {isTyping && (
+                {/* Typing indicators */}
+                {typingUsers && typingUsers.length > 0 && (
                   <div className="flex justify-start">
                     <div className="bg-bg-nature/60 dark:bg-card-bg border border-border-nature rounded-2xl rounded-tl-none p-3 text-[10px] text-gray-400 font-bold flex items-center gap-1">
                       <span className="h-1.5 w-1.5 bg-gray-400 rounded-full animate-bounce" />
                       <span className="h-1.5 w-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0.2s]" />
                       <span className="h-1.5 w-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0.4s]" />
-                      <span>{activeRoom.participantName} is typing...</span>
+                      <span>{typingUsers.join(", ")} is typing...</span>
                     </div>
                   </div>
                 )}
@@ -307,7 +347,7 @@ function ChatContent() {
                   type="text"
                   placeholder="Type message securely..."
                   value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
+                  onChange={handleInputChange}
                   onKeyDown={(e) => e.key === "Enter" && handleSend()}
                   className="flex-1 px-4 py-2 border border-border-nature rounded-xl text-xs bg-white dark:bg-card-bg outline-none focus:ring-1 focus:ring-primary text-text-charcoal"
                 />

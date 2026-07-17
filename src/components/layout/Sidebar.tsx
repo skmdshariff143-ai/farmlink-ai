@@ -7,7 +7,7 @@ import {
   LayoutDashboard, ShoppingBag, Truck, Warehouse, ShieldAlert,
   PlusCircle, FolderHeart, History, Landmark, ThermometerSnowflake,
   ClipboardList, Users, ShieldCheck, Heart, User, Settings, HelpCircle,
-  Menu, ChevronLeft, ChevronRight, MessageSquare, CloudSun
+  Menu, ChevronLeft, ChevronRight, MessageSquare, CloudSun, Activity
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -55,7 +55,8 @@ export default function Sidebar() {
       { id: "overview", label: "Dashboard", icon: LayoutDashboard },
       { id: "users", label: "Manage Users", icon: Users },
       { id: "crops", label: "Audit Crops", icon: ShieldCheck },
-      { id: "fraud", label: "Fraud Alerts", icon: ShieldAlert },
+      { id: "disputes", label: "Dispute Resolutions", icon: ShieldAlert },
+      { id: "fraud", label: "System Health", icon: Activity },
     ],
   };
 
