@@ -12,7 +12,10 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "mobile-app/**",
     "ai-devops-bot/**",
-    "socket-server.js"
+    "socket-server.js",
+    "scripts/**",
+    ".husky/**",
+    "**/*.test.ts"
   ]),
   {
     rules: {
