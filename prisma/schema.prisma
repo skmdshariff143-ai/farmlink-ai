@@ -262,3 +262,14 @@ model OrderDispute {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 }
+
+model Bid {
+  id         String   @id @default(uuid())
+  listingId  String
+  bidderId   String
+  bidderName String
+  amount     Float
+  createdAt  DateTime @default(now())
+
+  @@index([listingId, createdAt])
+}
