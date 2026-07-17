@@ -55,11 +55,30 @@ export async function PATCH(req: Request, { params }: Params) {
     }
 
     // Role verification: Farmers or Transport providers or Admins can update status
+    const userId = (session.user as any).id;
+    const role = (session.user as any).role;
+
+    const isBuyer = order.buyerId === userId;
+    const isFarmer = order.items.some(item => item.listing.farmerId === userId);
+    const isTransport = role === "TRANSPORT";
+    const isAdmin = role === "ADMIN";
+
+    if (!isBuyer && !isFarmer && !isTransport && !isAdmin) {
+      return NextResponse.json({ success: false, error: "Forbidden. Access denied." }, { status: 403 });
+    }
+
     const body = await req.json();
     const newStatus = body.status as OrderStatus;
 
     if (!Object.values(OrderStatus).includes(newStatus)) {
       return NextResponse.json({ success: false, error: "Invalid order status value" }, { status: 400 });
+    }
+
+    // Buyers can only confirm receipt (update status to DELIVERED)
+    if (isBuyer && !isAdmin && !isFarmer && !isTransport) {
+      if (newStatus !== OrderStatus.DELIVERED) {
+        return NextResponse.json({ success: false, error: "Buyers can only update status to DELIVERED to confirm receipt." }, { status: 400 });
+      }
     }
 
     const updatedOrder = await OrderService.updateOrderStatus(id, newStatus);

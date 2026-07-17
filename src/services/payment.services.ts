@@ -1,6 +1,20 @@
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
 
+/*
+ * SECURITY WARNING: This module fails closed by design.
+ * To go live:
+ * 1. Set RAZORPAY_SECRET and RAZORPAY_WEBHOOK_SECRET in your production environment variables.
+ * 2. Set DEMO_MODE=false in your environment.
+ * The front-end demo banners and simulated mock payments will automatically disappear.
+ */
+export const isDemoMode = (): boolean => {
+  const hasSecrets = !!(process.env.RAZORPAY_SECRET && process.env.RAZORPAY_WEBHOOK_SECRET);
+  if (process.env.DEMO_MODE === "true") return true;
+  if (process.env.DEMO_MODE === "false") return false;
+  return !hasSecrets;
+};
+
 export const PaymentFintechService = {
   // ========================================================
   // 1. RAZORPAY / STRIPE MOCK INTEGRATION & SIGNATURES
@@ -32,19 +46,52 @@ export const PaymentFintechService = {
     razorpayOrderId: string,
     razorpayPaymentId: string,
     razorpaySignature: string
-  ) {
-    // In production, verify SHA256 signature:
-    // hmac = crypto.createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-    // hmac.update(razorpayOrderId + "|" + razorpayPaymentId)
-    // generated_signature = hmac.digest("hex")
-    // return generated_signature === razorpaySignature
-    
-    const hmac = crypto.createHmac("sha256", process.env.RAZORPAY_SECRET || "mock_secret");
-    hmac.update(`${razorpayOrderId}|${razorpayPaymentId}`);
-    const generatedSignature = hmac.digest("hex");
+  ): Promise<boolean> {
+    const secret = process.env.RAZORPAY_SECRET;
+    if (!secret) {
+      throw new Error("Razorpay secret not configured");
+    }
 
-    // For testing/mock compatibility, return true if validated
-    return true; 
+    try {
+      const hmac = crypto.createHmac("sha256", secret);
+      hmac.update(`${razorpayOrderId}|${razorpayPaymentId}`);
+      const generatedSignature = hmac.digest("hex");
+
+      const genBuffer = Buffer.from(generatedSignature, "utf8");
+      const sigBuffer = Buffer.from(razorpaySignature, "utf8");
+
+      if (genBuffer.length !== sigBuffer.length) {
+        return false;
+      }
+
+      return crypto.timingSafeEqual(genBuffer, sigBuffer);
+    } catch {
+      return false;
+    }
+  },
+
+  verifyWebhookSignature(rawBody: string, signature: string): boolean {
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (!secret) {
+      throw new Error("Razorpay webhook secret not configured");
+    }
+
+    try {
+      const hmac = crypto.createHmac("sha256", secret);
+      hmac.update(rawBody);
+      const expectedSignature = hmac.digest("hex");
+
+      const expectedBuffer = Buffer.from(expectedSignature, "utf8");
+      const signatureBuffer = Buffer.from(signature, "utf8");
+
+      if (expectedBuffer.length !== signatureBuffer.length) {
+        return false;
+      }
+
+      return crypto.timingSafeEqual(expectedBuffer, signatureBuffer);
+    } catch {
+      return false;
+    }
   },
 
   // ========================================================

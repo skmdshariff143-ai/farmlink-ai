@@ -1,23 +1,25 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import crypto from "crypto";
+import { PaymentFintechService } from "@/services/payment.services";
+
+/*
+ * SECURITY WARNING: This webhook endpoint fails closed by design.
+ * To go live:
+ * 1. Set RAZORPAY_SECRET and RAZORPAY_WEBHOOK_SECRET in your production environment variables.
+ * 2. Set DEMO_MODE=false in your environment.
+ * Webhook signature verification will fail closed on any missing or invalid signatures.
+ */
 
 export async function POST(req: Request) {
   try {
     const rawBody = await req.text();
     const signature = req.headers.get("x-razorpay-signature") || "";
     
-    // Webhook signature security checks
-    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || "mock_webhook_secret";
-    
-    const hmac = crypto.createHmac("sha256", webhookSecret);
-    hmac.update(rawBody);
-    const expectedSignature = hmac.digest("hex");
-
-    // In production, validate header signature
-    // if (expectedSignature !== signature) {
-    //   return NextResponse.json({ success: false, error: "Invalid webhook signature" }, { status: 400 });
-    // }
+    // Validate webhook signature
+    const isValid = PaymentFintechService.verifyWebhookSignature(rawBody, signature);
+    if (!isValid) {
+      return NextResponse.json({ success: false, error: "Invalid webhook signature" }, { status: 400 });
+    }
 
     const payload = JSON.parse(rawBody);
     const event = payload.event;

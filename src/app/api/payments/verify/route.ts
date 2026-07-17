@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { PaymentFintechService } from "@/services/payment.services";
+import { PaymentFintechService, isDemoMode } from "@/services/payment.services";
 import { PaymentService } from "@/services/db.services";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
@@ -28,6 +28,12 @@ export async function POST(req: Request) {
     }
 
     const { paymentId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = result.data;
+
+    if (isDemoMode()) {
+      // In demo mode, bypass signature verification and confirm payment directly
+      const verifiedPayment = await PaymentService.verifyPayment(paymentId, "Paid");
+      return NextResponse.json({ success: true, data: verifiedPayment, demo: true });
+    }
 
     // Verify cryptographic signature
     const isValid = await PaymentFintechService.verifyRazorpaySignature(

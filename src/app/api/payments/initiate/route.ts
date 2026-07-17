@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { PaymentFintechService } from "@/services/payment.services";
+import { PaymentFintechService, isDemoMode } from "@/services/payment.services";
 import { OrderService } from "@/services/db.services";
 import { z } from "zod";
+import crypto from "crypto";
 
 const initiateSchema = z.object({
   orderId: z.string().uuid("Invalid order ID"),
@@ -43,6 +44,16 @@ export async function POST(req: Request) {
     }
 
     if (paymentMethod === "Razorpay") {
+      if (isDemoMode()) {
+        const mockOrder = {
+          id: `demo_pay_${crypto.randomBytes(8).toString("hex")}`,
+          razorpayOrderId: `demo_order_rzp_${crypto.randomBytes(8).toString("hex")}`,
+          amount: amount * 100,
+          currency: "INR",
+          demo: true
+        };
+        return NextResponse.json({ success: true, data: mockOrder });
+      }
       const razorpayOrder = await PaymentFintechService.createRazorpayOrder(orderId, amount);
       return NextResponse.json({ success: true, data: razorpayOrder });
     }

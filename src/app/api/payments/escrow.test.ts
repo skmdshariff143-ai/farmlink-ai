@@ -1,7 +1,9 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
-import { PaymentFintechService } from "@/services/payment.services";
+import { PaymentFintechService, isDemoMode } from "@/services/payment.services";
 import { prisma } from "@/lib/prisma";
 import { POST as initiatePOST } from "./initiate/route";
+import { POST as webhookPOST } from "./webhook/route";
+import crypto from "crypto";
 
 vi.mock("next-auth", () => ({
   getServerSession: vi.fn(() => Promise.resolve({
@@ -61,7 +63,8 @@ vi.mock("@/lib/prisma", () => {
       },
       payment: {
         create: vi.fn(),
-        update: vi.fn()
+        update: vi.fn(),
+        findFirst: vi.fn()
       },
       orderDispute: {
         create: vi.fn(),
@@ -430,6 +433,299 @@ describe("Escrow & Payment System Checks", () => {
         where: { id: "buyer-1" },
         data: { walletBalance: 500 }
       }));
+    });
+  });
+
+  describe("Razorpay/Stripe Signature Verification Tests", () => {
+    const orderId = "order_123";
+    const paymentId = "pay_456";
+    const secret = "test_webhook_secret";
+
+    beforeEach(() => {
+      process.env.RAZORPAY_SECRET = secret;
+      process.env.RAZORPAY_WEBHOOK_SECRET = secret;
+    });
+
+    it("should pass verification with a valid order/payment signature", async () => {
+      const hmac = crypto.createHmac("sha256", secret);
+      hmac.update(`${orderId}|${paymentId}`);
+      const validSignature = hmac.digest("hex");
+
+      const result = await PaymentFintechService.verifyRazorpaySignature(
+        orderId,
+        paymentId,
+        validSignature
+      );
+      expect(result).toBe(true);
+    });
+
+    it("should fail verification with a tampered order/payment payload/signature", async () => {
+      const hmac = crypto.createHmac("sha256", secret);
+      hmac.update(`${orderId}|${paymentId}`);
+      const validSignature = hmac.digest("hex");
+      const tamperedSignature = validSignature.substring(0, validSignature.length - 2) + "00";
+
+      const result = await PaymentFintechService.verifyRazorpaySignature(
+        orderId,
+        paymentId,
+        tamperedSignature
+      );
+      expect(result).toBe(false);
+    });
+
+    it("should fail verification with an invalid signature length or empty value", async () => {
+      const resultEmpty = await PaymentFintechService.verifyRazorpaySignature(
+        orderId,
+        paymentId,
+        ""
+      );
+      expect(resultEmpty).toBe(false);
+
+      const resultShort = await PaymentFintechService.verifyRazorpaySignature(
+        orderId,
+        paymentId,
+        "short_sig"
+      );
+      expect(resultShort).toBe(false);
+    });
+
+    it("should pass webhook verification with a valid signature", () => {
+      const payload = JSON.stringify({ event: "payment.captured", orderId });
+      const hmac = crypto.createHmac("sha256", secret);
+      hmac.update(payload);
+      const validSignature = hmac.digest("hex");
+
+      const result = PaymentFintechService.verifyWebhookSignature(payload, validSignature);
+      expect(result).toBe(true);
+    });
+
+    it("should fail webhook verification with a tampered payload", () => {
+      const payload = JSON.stringify({ event: "payment.captured", orderId });
+      const tamperedPayload = JSON.stringify({ event: "payment.captured", orderId: "tampered_order_id" });
+      const hmac = crypto.createHmac("sha256", secret);
+      hmac.update(payload);
+      const signature = hmac.digest("hex");
+
+      const result = PaymentFintechService.verifyWebhookSignature(tamperedPayload, signature);
+      expect(result).toBe(false);
+    });
+
+    it("should fail webhook verification with an empty or missing signature", () => {
+      const payload = JSON.stringify({ event: "payment.captured", orderId });
+      const resultEmpty = PaymentFintechService.verifyWebhookSignature(payload, "");
+      expect(resultEmpty).toBe(false);
+    });
+
+    it("should process webhook API route successfully with valid raw body signature", async () => {
+      const payloadObj = {
+        event: "payment.captured",
+        payload: {
+          payment: {
+            entity: {
+              amount: 2200000, // 22,000 INR in paise
+              notes: { orderId: "ord_101" }
+            }
+          }
+        }
+      };
+      const rawBody = JSON.stringify(payloadObj);
+      
+      const hmac = crypto.createHmac("sha256", secret);
+      hmac.update(rawBody);
+      const validSignature = hmac.digest("hex");
+
+      (prisma.payment.findFirst as any).mockResolvedValueOnce({ id: "pay_01", amount: 22000 });
+      (prisma.payment.update as any).mockResolvedValueOnce({});
+      (prisma.order.update as any).mockResolvedValueOnce({});
+
+      const req = new Request("http://localhost/api/payments/webhook", {
+        method: "POST",
+        headers: {
+          "x-razorpay-signature": validSignature,
+          "content-type": "application/json"
+        },
+        body: rawBody
+      });
+
+      const response = await webhookPOST(req);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(prisma.payment.update).toHaveBeenCalled();
+      expect(prisma.order.update).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: "ord_101" },
+        data: { paymentStatus: "Paid" }
+      }));
+    });
+
+    it("should reject webhook API route with status 400 when signature validation fails", async () => {
+      const rawBody = JSON.stringify({ event: "payment.captured" });
+      const req = new Request("http://localhost/api/payments/webhook", {
+        method: "POST",
+        headers: {
+          "x-razorpay-signature": "tampered_signature_value",
+          "content-type": "application/json"
+        },
+        body: rawBody
+      });
+
+      const response = await webhookPOST(req);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.error).toBe("Invalid webhook signature");
+    });
+
+    it("should throw an error when RAZORPAY_SECRET is undefined", async () => {
+      delete process.env.RAZORPAY_SECRET;
+
+      await expect(
+        PaymentFintechService.verifyRazorpaySignature(orderId, paymentId, "any_sig")
+      ).rejects.toThrow("Razorpay secret not configured");
+    });
+
+    it("should throw an error when RAZORPAY_WEBHOOK_SECRET is undefined", () => {
+      delete process.env.RAZORPAY_WEBHOOK_SECRET;
+
+      expect(() =>
+        PaymentFintechService.verifyWebhookSignature("any_payload", "any_sig")
+      ).toThrow("Razorpay webhook secret not configured");
+    });
+
+    it("should fail with status 500 when webhook is called and secret is missing", async () => {
+      delete process.env.RAZORPAY_WEBHOOK_SECRET;
+      const rawBody = JSON.stringify({ event: "payment.captured" });
+      
+      const req = new Request("http://localhost/api/payments/webhook", {
+        method: "POST",
+        headers: {
+          "x-razorpay-signature": "any_signature",
+          "content-type": "application/json"
+        },
+        body: rawBody
+      });
+
+      const response = await webhookPOST(req);
+      const data = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(data.success).toBe(false);
+      expect(data.error).toBe("Razorpay webhook secret not configured");
+    });
+
+    it("should evaluate isDemoMode() purely based on environment variables", () => {
+      const originalSecret = process.env.RAZORPAY_SECRET;
+      const originalWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+      const originalDemoMode = process.env.DEMO_MODE;
+      try {
+        // 1. If secrets are missing, defaults to true
+        delete process.env.RAZORPAY_SECRET;
+        delete process.env.RAZORPAY_WEBHOOK_SECRET;
+        delete process.env.DEMO_MODE;
+        expect(isDemoMode()).toBe(true);
+
+        // 2. If secrets are present, defaults to false
+        process.env.RAZORPAY_SECRET = "real_secret";
+        process.env.RAZORPAY_WEBHOOK_SECRET = "real_webhook_secret";
+        expect(isDemoMode()).toBe(false);
+
+        // 3. Explicit DEMO_MODE overrides
+        process.env.DEMO_MODE = "true";
+        expect(isDemoMode()).toBe(true);
+
+        process.env.DEMO_MODE = "false";
+        expect(isDemoMode()).toBe(false);
+      } finally {
+        process.env.RAZORPAY_SECRET = originalSecret;
+        process.env.RAZORPAY_WEBHOOK_SECRET = originalWebhookSecret;
+        process.env.DEMO_MODE = originalDemoMode;
+      }
+    });
+
+    it("should fail closed and attempt real validation when DEMO_MODE is explicitly false even if secrets are missing", async () => {
+      const originalSecret = process.env.RAZORPAY_SECRET;
+      const originalWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+      const originalDemoMode = process.env.DEMO_MODE;
+      try {
+        delete process.env.RAZORPAY_SECRET;
+        delete process.env.RAZORPAY_WEBHOOK_SECRET;
+        process.env.DEMO_MODE = "false";
+
+        // isDemoMode should be false
+        expect(isDemoMode()).toBe(false);
+
+        // Verify request should fail closed with status 500
+        const req = new Request("http://localhost/api/payments/verify", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            paymentId: "pay_123",
+            razorpayOrderId: "order_123",
+            razorpayPaymentId: "pay_123",
+            razorpaySignature: "sig_123"
+          })
+        });
+
+        const { POST: verifyPOST } = await import("./verify/route");
+        const response = await verifyPOST(req);
+        const data = await response.json();
+
+        expect(response.status).toBe(500);
+        expect(data.success).toBe(false);
+        expect(data.error).toBe("Razorpay secret not configured");
+      } finally {
+        process.env.RAZORPAY_SECRET = originalSecret;
+        process.env.RAZORPAY_WEBHOOK_SECRET = originalWebhookSecret;
+        process.env.DEMO_MODE = originalDemoMode;
+      }
+    });
+
+    it("should generate clearly prefixed 'demo_' transaction and order IDs when initiating payment in demo mode", async () => {
+      const originalSecret = process.env.RAZORPAY_SECRET;
+      const originalWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+      const originalDemoMode = process.env.DEMO_MODE;
+      try {
+        delete process.env.RAZORPAY_SECRET;
+        delete process.env.RAZORPAY_WEBHOOK_SECRET;
+        delete process.env.DEMO_MODE;
+
+        expect(isDemoMode()).toBe(true);
+
+        const validOrderId = "123e4567-e89b-12d3-a456-426614174000";
+
+        (prisma.order.findUnique as any).mockResolvedValueOnce({
+          id: validOrderId,
+          total: 100
+        });
+
+        const req = new Request("http://localhost/api/payments/initiate", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            orderId: validOrderId,
+            paymentMethod: "Razorpay",
+            amount: 100
+          })
+        });
+
+        const response = await initiatePOST(req);
+        const resData = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(resData.success).toBe(true);
+        expect(resData.data.id).toMatch(/^demo_pay_/);
+        expect(resData.data.razorpayOrderId).toMatch(/^demo_order_rzp_/);
+      } finally {
+        process.env.RAZORPAY_SECRET = originalSecret;
+        process.env.RAZORPAY_WEBHOOK_SECRET = originalWebhookSecret;
+        process.env.DEMO_MODE = originalDemoMode;
+      }
     });
   });
 });
