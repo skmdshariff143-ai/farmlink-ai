@@ -118,13 +118,29 @@ npx expo start
 
 ```env
 DATABASE_URL="postgresql://postgres:[PASSWORD]@db.[REF].supabase.co:5432/postgres"
+DIRECT_URL="postgresql://postgres:[PASSWORD]@db.[REF].supabase.co:5432/postgres"
 NEXTAUTH_SECRET="secure-jwt-secret-hash"
 NEXT_PUBLIC_APP_URL="https://farmlink-umber.vercel.app"
 NEXT_PUBLIC_SOCKET_URL="http://localhost:3001"
 GEMINI_API_KEY="AIzaSy...your-key"
+
+# Optional for local development / demo mode; required only for real payment processing:
 RAZORPAY_KEY_ID="rzp_test_..."
 RAZORPAY_SECRET="razorpay-key-secret"
+RAZORPAY_WEBHOOK_SECRET="your-webhook-event-signature-secret"
+DEMO_MODE="true"
 ```
+
+---
+
+## 💳 Payments Integration & Demo Mode
+
+The payments subsystem defaults to an explicit **Demo Mode** when Razorpay credentials are absent in the environment, displaying a notification banner to let developers verify purchase lifecycles safely.
+
+To enable real production payments:
+1. Obtain verified merchant credentials (`RAZORPAY_KEY_ID`, `RAZORPAY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`) from your Razorpay Dashboard.
+2. Set the `DEMO_MODE` environment variable to `"false"` in Vercel.
+3. Configure the production webhook endpoint `/api/payments/webhook` to listen to standard Razorpay payment events.
 
 ---
 
@@ -140,12 +156,12 @@ vercel
 
 ---
 
-## 🔒 Security & Scalability
+## 🔒 Security Hardening & Concurrency Safety
 
-* **Session Isolation**: Utilizes JSON Web Tokens (JWTs) to secure routing namespaces.
-* **Role-Based Guards**: Checks user roles at both middleware and route handler levels.
-* **Data Sanitization**: Employs Zod schemas to sanitize all client requests.
-* **Query Performance**: Leverages database indexes on user profiles and transactions to ensure fast response times.
+* **Database Row Locking**: Employs transaction-level PostgreSQL `SELECT ... FOR UPDATE` row locks inside Prisma transactions to block concurrent race conditions during crop listing bidding.
+* **Supabase Row Level Security (RLS)**: Enforces database-level access control on all 15 tables (`User`, `CropListing`, `Order`, `Bid`, `ChatMessage`, etc.) mapping roles (FARMER, BUYER, ADMIN) to user identity checks.
+* **Socket.IO Authentication & Rate Limiting**: Secures WebSockets using JWT handshake validation matching client cookies, filters message text against HTML Injection/XSS payloads, and blocks spam events using sliding-window rate limit caches.
+* **HTTP Security Headers**: Enforces strict `Content-Security-Policy`, `X-Frame-Options: DENY`, `Strict-Transport-Security`, and `X-Content-Type-Options: nosniff` header configurations to mitigate CSRF, Clickjacking, and scripting vulnerabilities.
 
 ---
 
